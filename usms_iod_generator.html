@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>USMS IOD - Mobile Data Center Report Generator</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- html2pdf.js for client-side PDF generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        usms: {
+                            gold: '#c5a059',
+                            goldDark: '#9e7d3b',
+                            navy: '#0b1626',
+                            navyDark: '#050a12',
+                            panel: '#111d2e',
+                            border: '#1e2f47',
+                            accent: '#d97706'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Courier New', 'Courier', 'monospace'],
+                        official: ['Arial', 'Helvetica', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* PDF specific layout rules */
+        @media print {
+            body {
+                background: white !important;
+                color: black !important;
+            }
+            .no-print {
+                display: none !important;
+            }
+            .print-container {
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                box-shadow: none !important;
+            }
+        }
+
+        /* Document Watermark Styling */
+        .usms-watermark {
+            position: relative;
+        }
+        .usms-watermark-bg {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 82%;
+            height: auto;
+            max-height: 85%;
+            object-fit: contain;
+            pointer-events: none;
+            z-index: 0;
+            opacity: 0.85;
+        }
+
+        .document-grid {
+            border: 2px solid #000;
+        }
+        .document-grid > div {
+            border: 1px solid #000;
+        }
+    </style>
+</head>
+<body class="bg-usms-navyDark text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-usms-gold selection:text-black">
+
+    <!-- Top Navigation Bar -->
+    <header class="no-print bg-usms-navy border-b border-usms-border sticky top-0 z-50 px-4 py-3 shadow-lg">
+        <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-usms-gold flex items-center justify-center text-usms-navyDark font-bold text-xl shadow-inner">
+                    <i class="fa-solid font-bold fa-shield-halved"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight tracking-wider text-slate-100 uppercase">U.S. MARSHALS SERVICE</h1>
+                    <p class="text-xs text-usms-gold font-mono tracking-widest">INVESTIGATIVE OPERATIONS DIVISION | RACK ONE</p>
+                </div>
+            </div>
+
+            <!-- Header Action Buttons -->
+            <div class="flex items-center gap-3">
+                <button onclick="resetForm()" class="px-3 py-2 text-xs font-semibold rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition flex items-center gap-2 border border-slate-700">
+                    <i class="fa-solid fa-rotate-left"></i> Restablecer
+                </button>
+                <button onclick="downloadPDF()" class="px-4 py-2 text-xs font-bold rounded bg-usms-gold hover:bg-usms-goldDark text-usms-navyDark transition flex items-center gap-2 shadow-md">
+                    <i class="fa-solid fa-file-pdf text-base"></i> Descargar PDF
+                </button>
+                <button onclick="window.print()" class="px-3 py-2 text-xs font-semibold rounded bg-slate-700 hover:bg-slate-600 text-white transition flex items-center gap-2">
+                    <i class="fa-solid fa-print"></i> Imprimir
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- Form Sidebar (Inputs) -->
+        <section class="no-print lg:col-span-5 bg-usms-panel border border-usms-border rounded-xl p-5 shadow-xl flex flex-col gap-6 overflow-y-auto max-h-[calc(100vh-6rem)]">
+            
+            <div class="border-b border-usms-border pb-3 flex justify-between items-center">
+                <h2 class="text-sm font-bold text-usms-gold uppercase tracking-wider flex items-center gap-2">
+                    <i class="fa-solid fa-sliders"></i> Panel de Control de Datos
+                </h2>
+                <span class="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">IOD SYSTEM v4.2</span>
+            </div>
+
+            <form id="iodForm" onsubmit="event.preventDefault();" class="space-y-5 text-sm">
+                
+                <!-- General Info -->
+                <div class="space-y-3">
+                    <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-800 pb-1">Configuración General</h3>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1">Fecha del Informe</label>
+                        <input type="text" id="inputFecha" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-slate-100 focus:outline-none focus:border-usms-gold transition font-mono text-xs" placeholder="DD/MM/YYYY">
+                    </div>
+                </div>
+
+                <!-- Box 1: Suspect Information -->
+                <div class="space-y-3">
+                    <h3 class="text-xs font-semibold text-usms-gold uppercase tracking-wider border-b border-slate-800 pb-1 flex items-center gap-2">
+                        <i class="fa-solid fa-user-ninja"></i> 1. Datos del Sospechoso (DATA BASE)
+                    </h3>
+                    
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="col-span-2">
+                            <label class="block text-xs text-slate-400 mb-1">Nombre y Apellido</label>
+                            <input type="text" id="inputNombre" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-100 focus:outline-none focus:border-usms-gold">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Edad</label>
+                            <input type="text" id="inputEdad" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-100 focus:outline-none focus:border-usms-gold">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Género</label>
+                            <input type="text" id="inputGenero" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-100 focus:outline-none focus:border-usms-gold">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Etnia</label>
+                            <input type="text" id="inputEtnia" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-100 focus:outline-none focus:border-usms-gold">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Teléfono</label>
+                            <input type="text" id="inputTelefono" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-100 focus:outline-none focus:border-usms-gold">
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-xs text-slate-400 mb-1">Residencia</label>
+                            <input type="text" id="inputResidencia" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-100 focus:outline-none focus:border-usms-gold">
+                        </div>
+                    </div>
+
+                    <!-- OOC Section -->
+                    <div class="pt-2">
+                        <label class="block text-xs text-slate-400 mb-1">OOC - Id. (#HASH)</label>
+                        <input type="text" id="inputHash" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-100 font-mono text-xs focus:outline-none focus:border-usms-gold" placeholder="#12345">
+                    </div>
+                </div>
+
+                <!-- Box 2: Suspect Photo Upload -->
+                <div class="space-y-3">
+                    <h3 class="text-xs font-semibold text-usms-gold uppercase tracking-wider border-b border-slate-800 pb-1 flex items-center gap-2">
+                        <i class="fa-solid fa-image"></i> 2. Imagen Database (Foto Sospechoso)
+                    </h3>
+                    <div class="flex items-center gap-3">
+                        <input type="file" id="inputFotoSospechoso" accept="image/*" class="hidden" onchange="handleImageUpload(this, 'previewFotoSospechoso')">
+                        <button type="button" onclick="document.getElementById('inputFotoSospechoso').click()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded text-xs text-slate-300 flex items-center gap-2">
+                            <i class="fa-solid fa-upload"></i> Subir Imagen
+                        </button>
+                        <button type="button" onclick="clearImage('previewFotoSospechoso')" class="px-2 py-2 bg-rose-950/60 hover:bg-rose-900 border border-rose-800/80 rounded text-xs text-rose-300">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                        <span id="labelFotoSospechoso" class="text-xs text-slate-500 truncate max-w-[150px]">Sin archivo</span>
+                    </div>
+                </div>
+
+                <!-- Box 3: Physical Characteristics -->
+                <div class="space-y-3">
+                    <h3 class="text-xs font-semibold text-usms-gold uppercase tracking-wider border-b border-slate-800 pb-1 flex items-center gap-2">
+                        <i class="fa-solid fa-eye"></i> 3. Observaciones (Características Físicas)
+                    </h3>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Tatuajes</label>
+                            <input type="text" id="inputTatuajes" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-100 focus:outline-none focus:border-usms-gold">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Tez</label>
+                            <input type="text" id="inputTez" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-100 focus:outline-none focus:border-usms-gold">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Fisiología</label>
+                            <input type="text" id="inputFisiologia" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-100 focus:outline-none focus:border-usms-gold">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Contextura Física</label>
+                            <input type="text" id="inputContextura" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-100 focus:outline-none focus:border-usms-gold">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Box 4: Evidence Photo Upload -->
+                <div class="space-y-3">
+                    <h3 class="text-xs font-semibold text-usms-gold uppercase tracking-wider border-b border-slate-800 pb-1 flex items-center gap-2">
+                        <i class="fa-solid fa-vial"></i> 4. Evidencia Laboratorio (Imagen)
+                    </h3>
+                    <div class="flex items-center gap-3">
+                        <input type="file" id="inputFotoEvidencia" accept="image/*" class="hidden" onchange="handleImageUpload(this, 'previewFotoEvidencia')">
+                        <button type="button" onclick="document.getElementById('inputFotoEvidencia').click()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded text-xs text-slate-300 flex items-center gap-2">
+                            <i class="fa-solid fa-upload"></i> Subir Evidencia
+                        </button>
+                        <button type="button" onclick="clearImage('previewFotoEvidencia')" class="px-2 py-2 bg-rose-950/60 hover:bg-rose-900 border border-rose-800/80 rounded text-xs text-rose-300">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                        <span id="labelFotoEvidencia" class="text-xs text-slate-500 truncate max-w-[150px]">Sin archivo</span>
+                    </div>
+                </div>
+
+                <!-- Footer Fields -->
+                <div class="space-y-3 pt-2">
+                    <h3 class="text-xs font-semibold text-usms-gold uppercase tracking-wider border-b border-slate-800 pb-1 flex items-center gap-2">
+                        <i class="fa-solid fa-id-card"></i> Datos Finales y Encargado
+                    </h3>
+                    
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Resultado del Estudio (%)</label>
+                        <input type="text" id="inputResultado" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-100 focus:outline-none focus:border-usms-gold font-bold" value="100%">
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-2">
+                        <div class="col-span-3 sm:col-span-1">
+                            <label class="block text-xs text-slate-400 mb-1">Encargado</label>
+                            <input type="text" id="inputEncargado" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-100 focus:outline-none focus:border-usms-gold">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Rango</label>
+                            <input type="text" id="inputRango" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-100 focus:outline-none focus:border-usms-gold">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">N° Placa</label>
+                            <input type="text" id="inputPlaca" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-100 focus:outline-none focus:border-usms-gold">
+                        </div>
+                    </div>
+                </div>
+
+            </form>
+        </section>
+
+        <!-- Preview Document Area (USMS IOD Record Format) -->
+        <section class="lg:col-span-7 flex flex-col items-center justify-start">
+            <div class="w-full mb-3 flex items-center justify-between no-print px-2">
+                <span class="text-xs text-slate-400 font-mono flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Vista previa en tiempo real
+                </span>
+                <span class="text-xs text-slate-400">Formato A4 Estándar USMS</span>
+            </div>
+
+            <!-- Paper Sheet Container -->
+            <div class="w-full overflow-x-auto flex justify-center pb-8">
+                <div id="pdfDocument" class="print-container bg-white text-black font-official shadow-2xl p-6 sm:p-10 w-[794px] min-h-[1050px] flex flex-col justify-between border border-slate-300 relative box-border my-0">
+                    
+                    <!-- Document Header -->
+                    <div>
+                        <div class="flex justify-between items-start mb-2">
+                            <div>
+                                <h1 class="font-bold text-xl leading-tight text-black tracking-wide">United States Marshals Service</h1>
+                                <h2 class="font-bold text-lg leading-tight text-slate-800">Investigative Operations Division</h2>
+                                <h3 class="text-md text-slate-700 font-semibold">Los Santos Courts</h3>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-sm font-bold flex items-center justify-end gap-1">
+                                    <span>Fecha:</span>
+                                    <span id="displayFecha" class="font-normal border-b border-slate-400 min-w-[90px] inline-block text-center">30/05/2026</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Subheader Titles -->
+                        <div class="text-center my-4 py-2 border-y-2 border-black">
+                            <h2 class="font-bold text-lg tracking-wider text-black uppercase">RACK ONE COMPUTING | MOBILE DATA CENTER</h2>
+                            <h3 class="font-bold text-sm tracking-wide text-black uppercase mt-0.5">FACIAL RECOGNITION & LABORATORY RECORD</h3>
+                        </div>
+
+                        <!-- Grid 2x2 with Watermark Seal -->
+                        <div class="usms-watermark document-grid grid grid-cols-2 mt-4 relative z-10">
+                            <img src="https://lh3.googleusercontent.com/gg-dl/AHiVA1nkNzQTFlu46ihEiiUKwsX-2tr_ls0Ud4IiJE2Cbrw1f_7abjDVAY-LDU3xZZfQuvjWnj_Wlq2DZPxRw6ckk29s_1fxQVXvpG3LYt1LfgxKqblX7ntQQPCB_ILNrNI2PN8q-9pVAzLhnRJwjUSGibANIREmppZtsnzet8ioIoKWNu0q" alt="USMS IOD Official Seal Watermark" class="usms-watermark-bg">
+                            
+                            <!-- Box 1: DATA BASE -->
+                            <div class="p-4 flex flex-col justify-between border-black min-h-[320px] relative z-10 bg-white/70">
+                                <div>
+                                    <h3 class="font-bold text-base underline mb-3 text-center uppercase tracking-wide">DATA BASE</h3>
+                                    <p class="font-bold text-sm mb-2 flex items-center gap-1">
+                                        <span>➔</span> <span>Información del Sospechoso:</span>
+                                    </p>
+                                    <ul class="space-y-1.5 text-sm pl-4">
+                                        <li class="flex"><span class="w-36 font-semibold">- Nombre y Apellido:</span> <span id="displayNombre" class="font-normal flex-1 border-b border-dashed border-slate-400 min-h-[20px]"></span></li>
+                                        <li class="flex"><span class="w-36 font-semibold">- Edad:</span> <span id="displayEdad" class="font-normal flex-1 border-b border-dashed border-slate-400 min-h-[20px]"></span></li>
+                                        <li class="flex"><span class="w-36 font-semibold">- Género:</span> <span id="displayGenero" class="font-normal flex-1 border-b border-dashed border-slate-400 min-h-[20px]"></span></li>
+                                        <li class="flex"><span class="w-36 font-semibold">Etnia:</span> <span id="displayEtnia" class="font-normal flex-1 border-b border-dashed border-slate-400 min-h-[20px]"></span></li>
+                                        <li class="flex"><span class="w-36 font-semibold">Teléfono:</span> <span id="displayTelefono" class="font-normal flex-1 border-b border-dashed border-slate-400 min-h-[20px]"></span></li>
+                                        <li class="flex"><span class="w-36 font-semibold">- Residencia:</span> <span id="displayResidencia" class="font-normal flex-1 border-b border-dashed border-slate-400 min-h-[20px]"></span></li>
+                                    </ul>
+                                </div>
+
+                                <div class="mt-4 pt-2 border-t border-slate-300">
+                                    <p class="font-mono text-xs font-bold mb-1">➔ Out Of Character (OOC):</p>
+                                    <p class="font-mono text-xs pl-4 flex"><span class="w-28">- Id. (#HASH):</span> <span id="displayHash" class="font-bold text-black flex-1"></span></p>
+                                </div>
+                            </div>
+
+                            <!-- Box 2: IMAGEN DATABASE -->
+                            <div class="p-4 flex flex-col items-center justify-between border-black min-h-[320px] relative z-10 bg-white/70">
+                                <h3 class="font-bold text-base underline mb-2 text-center uppercase tracking-wide w-full">IMAGEN DATABASE</h3>
+                                <div class="flex-1 w-full flex items-center justify-center p-2 bg-slate-50/80 border border-slate-200 rounded">
+                                    <img id="previewFotoSospechoso" src="" alt="Foto Sospechoso" class="max-h-[240px] max-w-full object-contain hidden shadow-sm">
+                                    <div id="placeholderFotoSospechoso" class="text-center text-slate-400 text-xs italic">
+                                        <i class="fa-solid fa-user-tie text-4xl block mb-2 opacity-30"></i>
+                                        [ FOTO DEL SOSPECHOSO ]
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Box 3: Observaciones -->
+                            <div class="p-4 flex flex-col justify-between border-black min-h-[320px] relative z-10 bg-white/70">
+                                <div>
+                                    <h3 class="font-bold text-base underline mb-3 text-center uppercase tracking-wide">Observaciones</h3>
+                                    <p class="font-bold text-sm mb-2 flex items-center gap-1">
+                                        <span>➔</span> <span>Características Físicas:</span>
+                                    </p>
+                                    <ul class="space-y-2 text-sm pl-4">
+                                        <li class="flex"><span class="w-36 font-semibold">- Tatuajes:</span> <span id="displayTatuajes" class="font-normal flex-1 border-b border-dashed border-slate-400 min-h-[20px]"></span></li>
+                                        <li class="flex"><span class="w-36 font-semibold">- Tez:</span> <span id="displayTez" class="font-normal flex-1 border-b border-dashed border-slate-400 min-h-[20px]"></span></li>
+                                        <li class="flex"><span class="w-36 font-semibold">- Fisiología:</span> <span id="displayFisiologia" class="font-normal flex-1 border-b border-dashed border-slate-400 min-h-[20px]"></span></li>
+                                        <li class="flex"><span class="w-36 font-semibold">- Contextura Física:</span> <span id="displayContextura" class="font-normal flex-1 border-b border-dashed border-slate-400 min-h-[20px]"></span></li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <!-- Box 4: EVIDENCIA LABORATORIO -->
+                            <div class="p-4 flex flex-col items-center justify-between border-black min-h-[320px] relative z-10 bg-white/70">
+                                <h3 class="font-bold text-base underline mb-2 text-center uppercase tracking-wide w-full">EVIDENCIA LABORATORIO</h3>
+                                <div class="flex-1 w-full flex items-center justify-center p-2 bg-slate-50/80 border border-slate-200 rounded">
+                                    <img id="previewFotoEvidencia" src="" alt="Evidencia Laboratorio" class="max-h-[240px] max-w-full object-contain hidden shadow-sm">
+                                    <div id="placeholderFotoEvidencia" class="text-center text-slate-400 text-xs italic">
+                                        <i class="fa-solid fa-microscope text-4xl block mb-2 opacity-30"></i>
+                                        [ EVIDENCIA DE LABORATORIO ]
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <!-- Footer Table Grid -->
+                    <div class="mt-6 border-2 border-black">
+                        <!-- Top Row: RESULTADO & PERCENTAGE -->
+                        <div class="grid grid-cols-2 border-b-2 border-black">
+                            <div class="p-3 font-bold text-center text-lg uppercase flex items-center justify-center border-r-2 border-black">
+                                RESULTADO DEL ESTUDIO<br>DE LABORATORIO
+                            </div>
+                            <div class="p-3 font-bold text-center text-4xl flex items-center justify-center text-black" id="displayResultado">
+                                100%
+                            </div>
+                        </div>
+                        
+                        <!-- Bottom Row: ENCARGADO / RANGO / PLACA -->
+                        <div class="grid grid-cols-3 text-xs p-3 gap-2 bg-slate-50/50">
+                            <div>
+                                <span class="font-bold uppercase block">ENCARGADO:</span>
+                                <span id="displayEncargado" class="font-semibold text-sm text-slate-900 block mt-1"></span>
+                            </div>
+                            <div>
+                                <span class="font-bold uppercase block">RANGO:</span>
+                                <span id="displayRango" class="font-semibold text-sm text-slate-900 block mt-1"></span>
+                            </div>
+                            <div>
+                                <span class="font-bold uppercase block">N° de PLACA:</span>
+                                <span id="displayPlaca" class="font-semibold text-sm text-slate-900 block mt-1"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="no-print bg-usms-navy border-t border-usms-border py-4 text-center text-xs text-slate-500">
+        <p>U.S. MARSHALS SERVICE — INVESTIGATIVE OPERATIONS DIVISION (IOD) DATA CENTER</p>
+    </footer>
+
+    <!-- Interactive Logic Script -->
+    <script>
+        // Data Binding Map (Input ID -> Display Element ID)
+        const fieldMappings = {
+            'inputFecha': 'displayFecha',
+            'inputNombre': 'displayNombre',
+            'inputEdad': 'displayEdad',
+            'inputGenero': 'displayGenero',
+            'inputEtnia': 'displayEtnia',
+            'inputTelefono': 'displayTelefono',
+            'inputResidencia': 'displayResidencia',
+            'inputHash': 'displayHash',
+            'inputTatuajes': 'displayTatuajes',
+            'inputTez': 'displayTez',
+            'inputFisiologia': 'displayFisiologia',
+            'inputContextura': 'displayContextura',
+            'inputResultado': 'displayResultado',
+            'inputEncargado': 'displayEncargado',
+            'inputRango': 'displayRango',
+            'inputPlaca': 'displayPlaca'
+        };
+
+        // Initialize default date & event listeners on load
+        window.onload = function() {
+            // Set today's date formatted as DD/MM/YYYY
+            const today = new Date();
+            const day = String(today.getDate()).padStart(2, '0');
+            const month = String(today.getMonth() + 1).padStart(2, '0');
+            const year = today.getFullYear();
+            const formattedDate = `${day}/${month}/${year}`;
+
+            const dateInput = document.getElementById('inputFecha');
+            if (dateInput) {
+                dateInput.value = formattedDate;
+                document.getElementById('displayFecha').textContent = formattedDate;
+            }
+
+            // Attach input event listeners for live two-way binding
+            Object.keys(fieldMappings).forEach(inputId => {
+                const inputEl = document.getElementById(inputId);
+                const displayEl = document.getElementById(fieldMappings[inputId]);
+
+                if (inputEl && displayEl) {
+                    inputEl.addEventListener('input', () => {
+                        displayEl.textContent = inputEl.value || '';
+                    });
+                }
+            });
+        };
+
+        // Handle Image Uploads for Suspect and Lab Evidence
+        function handleImageUpload(input, previewId) {
+            const file = input.files[0];
+            const placeholderId = previewId.replace('preview', 'placeholder');
+            const labelId = previewId.replace('preview', 'label');
+
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = document.getElementById(previewId);
+                    const placeholder = document.getElementById(placeholderId);
+                    const label = document.getElementById(labelId);
+
+                    img.src = e.target.result;
+                    img.classList.remove('hidden');
+                    if (placeholder) placeholder.classList.add('hidden');
+                    if (label) label.textContent = file.name;
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        // Clear Image
+        function clearImage(previewId) {
+            const placeholderId = previewId.replace('preview', 'placeholder');
+            const labelId = previewId.replace('preview', 'label');
+            const inputId = previewId.replace('preview', 'input');
+
+            const img = document.getElementById(previewId);
+            const placeholder = document.getElementById(placeholderId);
+            const label = document.getElementById(labelId);
+            const input = document.getElementById(inputId);
+
+            if (img) {
+                img.src = '';
+                img.classList.add('hidden');
+            }
+            if (placeholder) placeholder.classList.remove('hidden');
+            if (label) label.textContent = 'Sin archivo';
+            if (input) input.value = '';
+        }
+
+        // Reset form inputs
+        function resetForm() {
+            document.getElementById('iodForm').reset();
+            
+            // Trigger input events to update text previews
+            Object.keys(fieldMappings).forEach(inputId => {
+                const inputEl = document.getElementById(inputId);
+                const displayEl = document.getElementById(fieldMappings[inputId]);
+                if (inputEl && displayEl) {
+                    displayEl.textContent = inputEl.value || '';
+                }
+            });
+
+            // Clear images
+            clearImage('previewFotoSospechoso');
+            clearImage('previewFotoEvidencia');
+
+            // Reset date to today
+            const today = new Date();
+            const day = String(today.getDate()).padStart(2, '0');
+            const month = String(today.getMonth() + 1).padStart(2, '0');
+            const year = today.getFullYear();
+            const formattedDate = `${day}/${month}/${year}`;
+            document.getElementById('inputFecha').value = formattedDate;
+            document.getElementById('displayFecha').textContent = formattedDate;
+
+            // Reset default result
+            document.getElementById('inputResultado').value = '100%';
+            document.getElementById('displayResultado').textContent = '100%';
+        }
+
+        // Export PDF
+        function downloadPDF() {
+            const element = document.getElementById('pdfDocument');
+            const nameField = document.getElementById('inputNombre').value.trim();
+            const fileName = nameField ? `USMS_IOD_${nameField.replace(/\s+/g, '_')}.pdf` : 'USMS_IOD_Record.pdf';
+
+            const options = {
+                margin: 0,
+                filename: fileName,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true, logging: false },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+
+            // Generate PDF
+            if (window.html2pdf) {
+                html2pdf().set(options).from(element).save();
+            } else {
+                window.print();
+            }
+        }
+    </script>
+</body>
+</html>
